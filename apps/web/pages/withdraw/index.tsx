@@ -1,14 +1,37 @@
 import { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import InfoBox from '@/components/info-box/info-box';
 import { useGetUserByIdQuery } from '@/redux/services/users.service';
 import { useAppSelector } from '@/redux/store';
-import { Wallet } from '@/components/icons/wallet';
-import { Clock } from '@/components/icons/clock';
+import { useDispatch } from 'react-redux';
+import {
+  closeAlertDialog,
+  openAlertDialog,
+} from '@/redux/features/modal-slice';
+import { useRouter } from 'next/router';
+import { z } from 'zod';
+import { toast } from '@/hooks/use-toast';
+import {
+  useGetWithdrawalsQuery,
+  useRegisterWithdrawalMutation,
+} from '@/redux/services/withdrawals.service';
+import { transactionStatus } from '@/lib/statusUtils';
+import IntegratedAppForm from '@/components/app-form/integrated-app-form';
+import AppInput from '@/components/app-input/app-input';
+
+const generalWalletRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const WithdrawPage = (): ReactNode => {
+  const router = useRouter();
+  const dispatch = useDispatch();
   const { user } = useAppSelector((store) => store.appState);
+  const { data: withdrawals } = useGetWithdrawalsQuery({
+    page: 0,
+    limit: 10,
+    filters: { userId: user?.id, status: transactionStatus.pending },
+  });
+  const [registerWithdrawal, { isLoading: withdrawIsLoading }] =
+    useRegisterWithdrawalMutation();
   const { data } = useGetUserByIdQuery({ id: user.id }, { skip: !user?.id });
 
   if (!data?.user) {
@@ -16,7 +39,143 @@ const WithdrawPage = (): ReactNode => {
   }
 
   const balance = data?.user?.balance || 0;
-  const pendingWithdraws = data?.user?.pendingWithdraws || 0;
+  const pendingWithdraws = withdrawals?.items?.length || 0;
+
+  const schema = z.object({
+    amount: z
+      .number()
+      .min(20, { message: 'Minimum withdrawal amount is 20 USDC.' })
+      .refine((val) => val <= balance, {
+        message: 'Amount must be less than or equal to your available balance',
+      }),
+    wallet: z.string().regex(generalWalletRegex, {
+      message: 'Invalid cryptocurrency wallet address',
+    }),
+  });
+
+  type formValues = z.infer<typeof schema>;
+
+  const defaultValues: formValues = {
+    amount: 0,
+    wallet: '',
+  };
+
+  const handleWithdraw = async (amount: number, wallet: string) => {
+    if (!amount || !wallet) return;
+
+    try {
+      schema.parse({ amount, wallet });
+
+      dispatch(
+        openAlertDialog({
+          title: 'Confirm Withdraw',
+          descriptionNode: (
+            <div>
+              <div className="flex items-center">
+                <p>Amount:</p>
+                <p className="ml-2 text-green-500 font-semibold">
+                  {amount} USDC
+                </p>
+              </div>
+              <div className="flex items-center">
+                <p>Network:</p>
+                <p className="ml-2 font-semibold">Solana</p>
+              </div>
+              <div className="flex items-center">
+                <p>Wallet address:</p>
+                <p className="ml-2 font-semibold">{wallet}</p>
+              </div>
+              <div className="mt-4">
+                <p>Do you wish to continue with this withdraw?</p>
+              </div>
+              {withdrawIsLoading && <div>Sending...</div>}
+            </div>
+          ),
+          onPress: async () => {
+            const res = await registerWithdrawal({
+              amount,
+              wallet,
+              userId: user.id,
+            });
+            dispatch(closeAlertDialog());
+
+            if (res.error) {
+              toast({
+                variant: 'destructive',
+                title:
+                  res.error.data.error ||
+                  'Error submitting withdraw request, please try again!',
+              });
+              return;
+            }
+
+            toast({
+              title: 'Withdrawal request is registered.',
+              description: `Please wait for your amount to be sent in your provided wallet.`,
+            });
+            await router.push('/withdraw-requests');
+          },
+        }),
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast({
+          variant: 'destructive',
+          title: error.errors[0].message,
+        });
+      }
+    }
+  };
+
+  const handleHowToWithdraw = () => {
+    dispatch(
+      openAlertDialog({
+        title: 'How to Withdraw',
+        descriptionNode: (
+          <div>
+            <p>
+              To complete the withdrawal process, please follow these
+              instructions:
+            </p>
+            <ol className="list-decimal ml-6 mt-2">
+              <li className="mb-2 text-start">
+                Provide a valid <strong>public key address</strong> to a Solana
+                wallet where you wish to withdraw your funds.
+              </li>
+              <li className="mb-2 text-start">
+                Specify the <strong>amount</strong> you wish to withdraw.
+              </li>
+              <li className="mb-2 text-start">
+                Ensure that the provided wallet address is{' '}
+                <strong>valid</strong> and that you have access to it. Any
+                errors in the wallet address may result in a loss of funds.
+              </li>
+              <li className="mb-2 text-start">
+                Withdrawal requests are processed by our team and typically take{' '}
+                <strong>10-30 minutes</strong> to complete. Please be patient
+                while we process your request.
+              </li>
+              <li className="mb-2 text-start">
+                For <strong>security reasons</strong>, you may only have{' '}
+                <strong>one active withdrawal request at a time</strong>. Once
+                the current request is completed, you will be able to submit
+                another withdrawal request.
+              </li>
+            </ol>
+            <p className="mt-2">
+              <strong>No Tax Fees:</strong> We do not charge any tax or service
+              fees for withdrawals. However, please note that a small{' '}
+              <strong>Solana blockchain network fee</strong> will be deducted to
+              process your transaction.
+            </p>
+          </div>
+        ),
+        onPress: async () => {
+          dispatch(closeAlertDialog());
+        },
+      }),
+    );
+  };
 
   return (
     <div className="mt-6 px-4 md:px-6">
@@ -41,48 +200,46 @@ const WithdrawPage = (): ReactNode => {
           Request Withdrawal
         </h2>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Amount
-            </label>
-            <Input
-              type="number"
-              placeholder="0"
-              className="bg-transparent border-gray-700 focus:border-blue-500"
-            />
-          </div>
+        <IntegratedAppForm<formValues>
+          defaultValues={defaultValues}
+          schema={schema}
+          onSubmit={handleWithdraw as any}
+        >
+          <div className="space-y-4">
+            <div>
+              <AppInput
+                labelText="Amount"
+                labelId="amount"
+                name="amount"
+                type="number"
+                placeholder="0"
+                className="bg-transparent border-gray-700 focus:border-blue-500"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Withdraw wallet
-            </label>
-            <Input
-              type="text"
-              placeholder="Public key..."
-              className="bg-transparent border-gray-700 focus:border-blue-500"
-            />
-            <p className="mt-2 text-xs text-orange-400 flex items-center">
-              <span className="mr-2">⚠️</span>
-              The provided address must be on: Solana Network
-            </p>
+            <div>
+              <AppInput
+                labelText="Withdraw wallet"
+                labelId="wallet"
+                name="wallet"
+                placeholder="Public key..."
+                className="bg-transparent border-gray-700 focus:border-blue-500"
+              />
+              <p className="mt-2 text-xs text-orange-400 flex items-center">
+                <span className="mr-2">⚠️</span>
+                The provided address must be on: Solana Network
+              </p>
+            </div>
+            <Button
+              type="submit"
+              variant="secondary"
+              className="w-full mt-6"
+              disabled={pendingWithdraws > 0}
+            >
+              WITHDRAW
+            </Button>
           </div>
-
-          <div className="flex items-start gap-2 mt-4">
-            <input
-              type="checkbox"
-              id="confirm"
-              className="mt-1 rounded border-gray-700 bg-transparent"
-            />
-            <label htmlFor="confirm" className="text-sm text-gray-400">
-              I confirm that the details provided are correct
-            </label>
-          </div>
-
-          <Button variant="secondary" className="w-full mt-6">
-            WITHDRAW
-          </Button>
-        </div>
+        </IntegratedAppForm>
       </div>
 
       <div className="mt-6 relative rounded-xl border-2 border-orange-900/50 transition-all p-4 md:p-6 backdrop-blur-sm bg-orange-500/5">
@@ -101,6 +258,14 @@ const WithdrawPage = (): ReactNode => {
           </div>
         </div>
       </div>
+
+      <Button
+        variant="ghost"
+        className="mt-6 text-sm text-gray-400 hover:text-gray-300"
+        onClick={handleHowToWithdraw}
+      >
+        How to withdraw?
+      </Button>
     </div>
   );
 };

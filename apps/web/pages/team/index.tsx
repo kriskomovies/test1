@@ -160,7 +160,9 @@ const TeamPage = (): ReactNode => {
 
   return (
     <div className="mt-6">
-      <h1 className="text-3xl">My Team ({members.length})</h1>
+      <h1 className="text-2xl md:text-3xl font-bold mb-4 md:mb-6">
+        My Team ({members.length})
+      </h1>
       <div className="my-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-5 gap-2">
         <InfoBox
           title="Total earnings from team"
@@ -219,7 +221,7 @@ const TeamPage = (): ReactNode => {
               <Tree
                 data={treeData}
                 orientation="vertical"
-                renderCustomNodeElement={CustomNode}
+                renderCustomNodeElement={CustomNode as any}
                 separation={{ siblings: 2, nonSiblings: 2.5 }}
                 translate={{
                   x: dimensions.width / 2,
@@ -228,7 +230,7 @@ const TeamPage = (): ReactNode => {
                 nodeSize={{ x: 320, y: 350 }}
                 zoomable={true}
                 collapsible={false}
-                pathFunc="curve"
+                pathFunc={'curve' as any}
                 styles={{
                   links: {
                     stroke: '#ffffff',

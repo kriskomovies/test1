@@ -117,7 +117,7 @@ const PackagesPage = (): ReactNode => {
                   /* Implement buy logic */
                 }}
                 disabled={isSelected || balance < price}
-                variant={isSelected ? 'success' : 'secondary'}
+                variant={isSelected ? ('success' as any) : 'secondary'}
                 className="w-full text-sm md:text-base"
               >
                 {isSelected ? 'Current Package' : 'Choose Package'}

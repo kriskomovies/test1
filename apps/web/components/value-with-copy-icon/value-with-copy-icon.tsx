@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
-import { Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Copy } from 'lucide-react';
 
 interface IValueWithCopyIconProps {
   value: string;
