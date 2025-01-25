@@ -10,7 +10,7 @@ import {
 import { useDispatch } from 'react-redux';
 import { Button } from '@/components/ui/button';
 import { CircleHelp } from 'lucide-react';
-import Tree from 'react-d3-tree';
+import Tree, { PathFunctionOption } from 'react-d3-tree';
 import {
   closeAlertDialog,
   openAlertDialog,
@@ -227,19 +227,17 @@ const TeamPage = (): ReactNode => {
                   x: dimensions.width / 2,
                   y: 200,
                 }}
-                nodeSize={{ x: 320, y: 350 }}
-                zoomable={true}
-                collapsible={false}
-                pathFunc={'curve' as any}
-                styles={{
-                  links: {
-                    stroke: '#ffffff',
-                    strokeWidth: 1.5,
-                    opacity: 0.7,
-                    fill: 'none',
-                  },
+                dimensions={{
+                  width: dimensions.width,
+                  height: 600
                 }}
-                centeringTransitionDuration={200}
+                nodeSize={{ x: 320, y: 350 }}
+                zoom={1}
+                enableLegacyTransitions={true}
+                transitionDuration={200}
+                svgClassName="tree-svg"
+                pathClassFunc={() => 'tree-link'}
+                pathFunc={'curved' as PathFunctionOption}
               />
             ) : (
               <div className="flex items-center justify-center h-full">

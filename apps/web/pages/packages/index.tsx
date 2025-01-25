@@ -8,10 +8,19 @@ import { useRouter } from 'next/router';
 import { Package } from '@/components/icons/package';
 import { Coins } from '@/components/icons/coins';
 import { Clock } from '@/components/icons/clock';
+import { useDispatch } from 'react-redux';
+import { useBuyPackageMutation } from '@/redux/services/packages.service';
+import { toast } from '@/hooks/use-toast';
+import {
+  closeAlertDialog,
+  openAlertDialog,
+} from '@/redux/features/modal-slice';
 
 const PackagesPage = (): ReactNode => {
   const router = useRouter();
+  const dispatch = useDispatch();
   const { user } = useAppSelector((store) => store.appState);
+  const [buyPackage] = useBuyPackageMutation();
   const { data, refetch, isLoading } = useGetUserByIdQuery(
     { id: user.id },
     { skip: !user?.id },
@@ -27,6 +36,58 @@ const PackagesPage = (): ReactNode => {
 
   const balance = data?.user?.balance || 0;
   const packageId = data?.user?.membership?.id;
+
+  const handlePurchase = (id: string, name: string, price: number, dailyIncome: number, isOwned: boolean) => {
+    const currentPackagePrice = data?.user?.membership?.price || 0;
+    
+    // Prevent buying lower packages
+    if (price < currentPackagePrice) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot downgrade package',
+        description: 'You cannot purchase a package with lower value than your current one.',
+      });
+      return;
+    }
+
+    if (!isOwned) {
+      dispatch(
+        openAlertDialog({
+          title: 'Confirm buy package',
+          descriptionNode: (
+            <div>
+              Buy package: {name} for {price} USDC
+            </div>
+          ),
+          onPress: async () => {
+            const res = await buyPackage({
+              userId: user.id,
+              membership: {
+                id,
+                name,
+                price,
+                dailyIncome,
+              },
+            });
+            dispatch(closeAlertDialog());
+            
+            if (res.error) {
+              toast({
+                variant: 'destructive',
+                title: res.error.data.error,
+              });
+            } else {
+              await refetch();
+              toast({
+                variant: 'default',
+                title: `Package ${name} successfully purchased`,
+              });
+            }
+          },
+        }),
+      );
+    }
+  };
 
   return (
     <div className="mt-6 px-4 md:px-6">
@@ -60,6 +121,7 @@ const PackagesPage = (): ReactNode => {
           const { id, name, price, dailyIncome, description } = membership;
           const isRecommended = id === 'pro';
           const isSelected = id === packageId;
+          const isOwned = data?.user?.membership?.id === id;
 
           return (
             <div
@@ -113,14 +175,16 @@ const PackagesPage = (): ReactNode => {
               </div>
 
               <Button
-                onClick={() => {
-                  /* Implement buy logic */
-                }}
-                disabled={isSelected || balance < price}
+                onClick={() => handlePurchase(id, name, price, dailyIncome, isOwned)}
+                disabled={isSelected || balance < price || price < (data?.user?.membership?.price || 0)}
                 variant={isSelected ? ('success' as any) : 'secondary'}
                 className="w-full text-sm md:text-base"
               >
-                {isSelected ? 'Current Package' : 'Choose Package'}
+                {isSelected 
+                  ? 'Current Package' 
+                  : price < (data?.user?.membership?.price || 0)
+                    ? 'Cannot Downgrade'
+                    : 'Choose Package'}
               </Button>
             </div>
           );
